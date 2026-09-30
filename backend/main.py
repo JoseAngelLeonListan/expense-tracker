@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 
 import models
 from database import Base, engine, get_db
-from schemas import ExpenseCreate, ExpenseRead
+from schemas import ExpenseCreate, ExpenseRead, UserCreate, UserRead
+from security import hash_password
 
 Base.metadata.create_all(bind=engine)
 
@@ -51,3 +52,15 @@ def delete_expense(expense_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Gasto no encontrado")
     db.delete(db_expense)
     db.commit()
+
+@app.post("/register", response_model=UserRead, status_code=201)
+def register(user: UserCreate, db: Session = Depends(get_db)):
+    email = user.email.lower()
+    existing = db.scalar(select(models.User).where(models.User.email == email))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="El email ya está registrado")
+    db_user = models.User(email=email, hashed_password=hash_password(user.password))
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user

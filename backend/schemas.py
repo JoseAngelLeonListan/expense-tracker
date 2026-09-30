@@ -1,6 +1,6 @@
 import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class ExpenseCreate(BaseModel):
@@ -12,5 +12,16 @@ class ExpenseCreate(BaseModel):
 
 class ExpenseRead(ExpenseCreate):
     id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserRead(BaseModel):
+    id: int
+    email: EmailStr
 
     model_config = ConfigDict(from_attributes=True)
