@@ -4,8 +4,14 @@ from sqlalchemy.orm import Session
 
 import models
 from database import Base, engine, get_db
-from schemas import ExpenseCreate, ExpenseRead, UserCreate, UserRead
-from security import hash_password
+from fastapi.security import OAuth2PasswordRequestForm
+from schemas import ExpenseCreate, ExpenseRead, Token, UserCreate, UserRead
+from security import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    verify_password,
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -64,3 +70,22 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     return db_user
+
+@app.post("/login", response_model=Token)
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+):
+    email = form_data.username.lower()
+    user = db.scalar(select(models.User).where(models.User.email == email))
+    if user is None or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Email o contraseña incorrectos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
+
+
+@app.get("/me", response_model=UserRead)
+def read_me(current_user: models.User = Depends(get_current_user)):
+    return current_user
