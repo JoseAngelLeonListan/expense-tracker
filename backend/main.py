@@ -1,10 +1,10 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import models
 from database import Base, engine, get_db
-from fastapi.security import OAuth2PasswordRequestForm
 from schemas import ExpenseCreate, ExpenseRead, Token, UserCreate, UserRead
 from security import (
     create_access_token,
@@ -23,42 +23,6 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/expenses", response_model=ExpenseRead, status_code=201)
-def create_expense(expense: ExpenseCreate, db: Session = Depends(get_db)):
-    db_expense = models.Expense(**expense.model_dump())
-    db.add(db_expense)
-    db.commit()
-    db.refresh(db_expense)
-    return db_expense
-
-
-@app.get("/expenses", response_model=list[ExpenseRead])
-def list_expenses(db: Session = Depends(get_db)):
-    query = select(models.Expense).order_by(models.Expense.date.desc())
-    return db.scalars(query).all()
-
-@app.put("/expenses/{expense_id}", response_model=ExpenseRead)
-def update_expense(
-    expense_id: int, expense: ExpenseCreate, db: Session = Depends(get_db)
-):
-    db_expense = db.get(models.Expense, expense_id)
-    if db_expense is None:
-        raise HTTPException(status_code=404, detail="Gasto no encontrado")
-    for field, value in expense.model_dump().items():
-        setattr(db_expense, field, value)
-    db.commit()
-    db.refresh(db_expense)
-    return db_expense
-
-
-@app.delete("/expenses/{expense_id}", status_code=204)
-def delete_expense(expense_id: int, db: Session = Depends(get_db)):
-    db_expense = db.get(models.Expense, expense_id)
-    if db_expense is None:
-        raise HTTPException(status_code=404, detail="Gasto no encontrado")
-    db.delete(db_expense)
-    db.commit()
-
 @app.post("/register", response_model=UserRead, status_code=201)
 def register(user: UserCreate, db: Session = Depends(get_db)):
     email = user.email.lower()
@@ -70,6 +34,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     return db_user
+
 
 @app.post("/login", response_model=Token)
 def login(
@@ -89,3 +54,64 @@ def login(
 @app.get("/me", response_model=UserRead)
 def read_me(current_user: models.User = Depends(get_current_user)):
     return current_user
+
+
+def get_own_expense(
+    db: Session, expense_id: int, user: models.User
+) -> models.Expense:
+    db_expense = db.get(models.Expense, expense_id)
+    if db_expense is None or db_expense.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    return db_expense
+
+
+@app.post("/expenses", response_model=ExpenseRead, status_code=201)
+def create_expense(
+    expense: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    db_expense = models.Expense(**expense.model_dump(), user_id=current_user.id)
+    db.add(db_expense)
+    db.commit()
+    db.refresh(db_expense)
+    return db_expense
+
+
+@app.get("/expenses", response_model=list[ExpenseRead])
+def list_expenses(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    query = (
+        select(models.Expense)
+        .where(models.Expense.user_id == current_user.id)
+        .order_by(models.Expense.date.desc())
+    )
+    return db.scalars(query).all()
+
+
+@app.put("/expenses/{expense_id}", response_model=ExpenseRead)
+def update_expense(
+    expense_id: int,
+    expense: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    db_expense = get_own_expense(db, expense_id, current_user)
+    for field, value in expense.model_dump().items():
+        setattr(db_expense, field, value)
+    db.commit()
+    db.refresh(db_expense)
+    return db_expense
+
+
+@app.delete("/expenses/{expense_id}", status_code=204)
+def delete_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    db_expense = get_own_expense(db, expense_id, current_user)
+    db.delete(db_expense)
+    db.commit()
