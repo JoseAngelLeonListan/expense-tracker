@@ -5,9 +5,15 @@ function formatDate(isoDate) {
   return isoDate.split('-').reverse().join('/')
 }
 
-function ExpenseList({ expenses, onEdit, onDelete }) {
+function ExpenseList({ expenses, filtered, onEdit, onDelete }) {
   if (expenses.length === 0) {
-    return <p className="empty">Todavía no tienes gastos. Añade el primero arriba.</p>
+    return (
+      <p className="empty">
+        {filtered
+          ? 'No hay gastos con estos filtros.'
+          : 'Todavía no tienes gastos. Añade el primero arriba.'}
+      </p>
+    )
   }
 
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0)

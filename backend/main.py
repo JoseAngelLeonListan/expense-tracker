@@ -1,19 +1,29 @@
-from fastapi import Depends, FastAPI, HTTPException
+import datetime
+
+from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
 import models
 from database import Base, engine, get_db
-from schemas import ExpenseCreate, ExpenseRead, Token, UserCreate, UserRead
+from schemas import (
+    CategoryTotal,
+    ExpenseCreate,
+    ExpenseRead,
+    MonthTotal,
+    Summary,
+    Token,
+    UserCreate,
+    UserRead,
+)
 from security import (
     create_access_token,
     get_current_user,
     hash_password,
     verify_password,
 )
-
-from fastapi.middleware.cors import CORSMiddleware
 
 Base.metadata.create_all(bind=engine)
 
@@ -87,15 +97,100 @@ def create_expense(
     return db_expense
 
 
+def expense_conditions(
+    user: models.User,
+    date_from: datetime.date | None,
+    date_to: datetime.date | None,
+    category: str | None,
+) -> list:
+    """Condiciones WHERE comunes: siempre los gastos del usuario, más los filtros opcionales."""
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(
+            status_code=422,
+            detail="La fecha 'desde' no puede ser posterior a 'hasta'",
+        )
+    conditions = [models.Expense.user_id == user.id]
+    if date_from:
+        conditions.append(models.Expense.date >= date_from)
+    if date_to:
+        conditions.append(models.Expense.date <= date_to)
+    if category:
+        conditions.append(models.Expense.category == category)
+    return conditions
+
+
 @app.get("/expenses", response_model=list[ExpenseRead])
 def list_expenses(
+    date_from: datetime.date | None = Query(default=None),
+    date_to: datetime.date | None = Query(default=None),
+    category: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    conditions = expense_conditions(current_user, date_from, date_to, category)
+    query = (
+        select(models.Expense)
+        .where(*conditions)
+        .order_by(models.Expense.date.desc(), models.Expense.id.desc())
+    )
+    return db.scalars(query).all()
+
+
+@app.get("/summary", response_model=Summary)
+def read_summary(
+    date_from: datetime.date | None = Query(default=None),
+    date_to: datetime.date | None = Query(default=None),
+    category: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    conditions = expense_conditions(current_user, date_from, date_to, category)
+    amount_sum = func.sum(models.Expense.amount)
+
+    total, count = db.execute(
+        select(func.coalesce(amount_sum, 0), func.count()).where(*conditions)
+    ).one()
+
+    by_category = db.execute(
+        select(models.Expense.category, amount_sum)
+        .where(*conditions)
+        .group_by(models.Expense.category)
+        .order_by(amount_sum.desc(), models.Expense.category)
+    ).all()
+
+    year = extract("year", models.Expense.date)
+    month = extract("month", models.Expense.date)
+    by_month = db.execute(
+        select(year, month, amount_sum)
+        .where(*conditions)
+        .group_by(year, month)
+        .order_by(year, month)
+    ).all()
+
+    return Summary(
+        total=round(total, 2),
+        count=count,
+        by_category=[
+            CategoryTotal(category=name, total=round(value, 2))
+            for name, value in by_category
+        ],
+        by_month=[
+            MonthTotal(month=f"{int(y):04d}-{int(mo):02d}", total=round(value, 2))
+            for y, mo, value in by_month
+        ],
+    )
+
+
+@app.get("/categories", response_model=list[str])
+def list_categories(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     query = (
-        select(models.Expense)
+        select(models.Expense.category)
         .where(models.Expense.user_id == current_user.id)
-        .order_by(models.Expense.date.desc())
+        .distinct()
+        .order_by(models.Expense.category)
     )
     return db.scalars(query).all()
 

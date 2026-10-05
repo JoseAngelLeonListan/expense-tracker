@@ -1,22 +1,42 @@
 import { useEffect, useState } from 'react'
-import { createExpense, deleteExpense, listExpenses, updateExpense } from './api'
+import {
+  createExpense,
+  deleteExpense,
+  getSummary,
+  listCategories,
+  listExpenses,
+  updateExpense,
+} from './api'
 import ExpenseForm from './ExpenseForm'
 import ExpenseList from './ExpenseList'
+import Filters from './Filters'
+import Summary from './Summary'
+
+const NO_FILTERS = { dateFrom: '', dateTo: '', category: '' }
 
 function Expenses({ token }) {
   const [expenses, setExpenses] = useState([])
+  const [summary, setSummary] = useState(null)
+  const [categories, setCategories] = useState([])
+  const [filters, setFilters] = useState(NO_FILTERS)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Pide la lista al montar, y otra vez cada vez que refreshKey cambia
+  // Pide lista, resumen y categorías al montar, y otra vez si cambian los filtros o refreshKey
   useEffect(() => {
     let ignore = false
-    listExpenses(token)
-      .then((data) => {
+    Promise.all([
+      listExpenses(token, filters),
+      getSummary(token, filters),
+      listCategories(token),
+    ])
+      .then(([expensesData, summaryData, categoriesData]) => {
         if (ignore) return
-        setExpenses(data)
+        setExpenses(expensesData)
+        setSummary(summaryData)
+        setCategories(categoriesData)
         setError('')
       })
       .catch((err) => {
@@ -28,7 +48,7 @@ function Expenses({ token }) {
     return () => {
       ignore = true
     }
-  }, [token, refreshKey])
+  }, [token, filters, refreshKey])
 
   function refresh() {
     setRefreshKey((key) => key + 1)
@@ -64,6 +84,10 @@ function Expenses({ token }) {
         onCancel={() => setEditing(null)}
       />
 
+      <Filters filters={filters} categories={categories} onChange={setFilters} />
+
+      {summary && <Summary summary={summary} />}
+
       <section className="panel">
         <h2>Mis gastos</h2>
         {error && (
@@ -74,7 +98,12 @@ function Expenses({ token }) {
         {loading ? (
           <p>Cargando...</p>
         ) : (
-          <ExpenseList expenses={expenses} onEdit={setEditing} onDelete={handleDelete} />
+          <ExpenseList
+            expenses={expenses}
+            filtered={Boolean(filters.dateFrom || filters.dateTo || filters.category)}
+            onEdit={setEditing}
+            onDelete={handleDelete}
+          />
         )}
       </section>
     </>

@@ -62,8 +62,26 @@ export function getMe(token) {
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
-export function listExpenses(token) {
-  return request('/expenses', { token })
+// { dateFrom, dateTo, category } -> '?date_from=...&date_to=...&category=...' (omite los vacíos)
+function filterQuery({ dateFrom, dateTo, category } = {}) {
+  const params = new URLSearchParams()
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  if (category) params.set('category', category)
+  const text = params.toString()
+  return text ? `?${text}` : ''
+}
+
+export function listExpenses(token, filters) {
+  return request(`/expenses${filterQuery(filters)}`, { token })
+}
+
+export function getSummary(token, filters) {
+  return request(`/summary${filterQuery(filters)}`, { token })
+}
+
+export function listCategories(token) {
+  return request('/categories', { token })
 }
 
 export function createExpense(token, expense) {

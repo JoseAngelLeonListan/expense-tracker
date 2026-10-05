@@ -29,3 +29,19 @@ class UserRead(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class CategoryTotal(BaseModel):
+    category: str
+    total: float
+
+
+class MonthTotal(BaseModel):
+    month: str  # formato AAAA-MM
+    total: float
+
+
+class Summary(BaseModel):
+    total: float
+    count: int
+    by_category: list[CategoryTotal]
+    by_month: list[MonthTotal]
