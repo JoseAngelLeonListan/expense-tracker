@@ -14,6 +14,13 @@ function errorMessage(data) {
   return 'Ha ocurrido un error inesperado'
 }
 
+let onUnauthorized = null
+
+// App.jsx registra aquí qué hacer cuando el servidor rechaza el token
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler
+}
+
 async function request(path, { token, ...options } = {}) {
   const headers = { ...options.headers }
   if (token) headers.Authorization = `Bearer ${token}`
@@ -24,6 +31,9 @@ async function request(path, { token, ...options } = {}) {
   } catch {
     throw new ApiError(0, 'No se puede conectar con el servidor')
   }
+
+  // Un 401 con token enviado = token caducado o inválido: cerrar la sesión
+  if (response.status === 401 && token && onUnauthorized) onUnauthorized()
 
   if (response.status === 204) return null
   const data = await response.json().catch(() => null)
@@ -48,4 +58,32 @@ export function login(email, password) {
 
 export function getMe(token) {
   return request('/me', { token })
+}
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' }
+
+export function listExpenses(token) {
+  return request('/expenses', { token })
+}
+
+export function createExpense(token, expense) {
+  return request('/expenses', {
+    token,
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(expense),
+  })
+}
+
+export function updateExpense(token, id, expense) {
+  return request(`/expenses/${id}`, {
+    token,
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(expense),
+  })
+}
+
+export function deleteExpense(token, id) {
+  return request(`/expenses/${id}`, { token, method: 'DELETE' })
 }
