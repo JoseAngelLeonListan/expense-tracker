@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import Float, ForeignKey, String
+from sqlalchemy import Float, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -8,6 +8,7 @@ from database import Base
 
 class Expense(Base):
     __tablename__ = "expenses"
+    __table_args__ = (Index("ix_expenses_user_id_date", "user_id", "date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     amount: Mapped[float] = mapped_column(Float)
@@ -15,6 +16,7 @@ class Expense(Base):
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     date: Mapped[datetime.date]
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
 
 class User(Base):
     __tablename__ = "users"

@@ -26,7 +26,7 @@ from security import (
     verify_password,
 )
 
-Base.metadata.create_all(bind=engine)
+from database import get_db
 
 app = FastAPI(title="Expense Tracker API")
 
