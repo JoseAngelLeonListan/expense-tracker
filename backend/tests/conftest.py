@@ -1,7 +1,11 @@
 import os
 
-# La clave debe existir ANTES de importar la app, porque security.py la lee al importarse.
+# La configuración se lee al importar la app, así que estas variables van ANTES de importarla.
+# Se fijan siempre (no setdefault) para que los tests no dependan de tu .env.
 os.environ["SECRET_KEY"] = "clave-secreta-solo-para-los-tests-no-usar-nunca-en-produccion-0123456789"
+os.environ["DATABASE_URL"] = "sqlite://"  # base de datos en memoria: los tests no tocan expenses.db
+os.environ["CORS_ORIGINS"] = "http://localhost:5173"
+os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
