@@ -1,0 +1,7 @@
+# Lo que NO entra en la imagen: entorno local, secretos, bases de datos y tests
+.venv
+.env
+*.db
+__pycache__
+.pytest_cache
+tests

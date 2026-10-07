@@ -1,3 +1,9 @@
+# Variables comunes al backend y a las migraciones (ancla YAML: se define una vez y se reutiliza)
+x-backend-env: &backend-env
+  SECRET_KEY: ${SECRET_KEY:?Define SECRET_KEY en el archivo .env de la raíz (openssl rand -hex 32)}
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-expenses}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-expenses}
+  CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+
 services:
   db:
     image: postgres:16
@@ -15,6 +21,46 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # Se ejecuta una vez, aplica las migraciones y termina. El backend espera a que acabe bien.
+  migrate:
+    build: ./backend
+    image: expense-tracker-backend
+    command: ["alembic", "upgrade", "head"]
+    environment: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build: ./backend
+    image: expense-tracker-backend
+    restart: unless-stopped
+    environment: *backend-env
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # La usa el navegador, que está fuera de Docker: por eso 127.0.0.1 y no "backend"
+        VITE_API_URL: http://127.0.0.1:8000
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:
