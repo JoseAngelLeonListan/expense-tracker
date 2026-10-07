@@ -98,3 +98,17 @@ def test_user_id_sent_by_client_is_ignored(client, make_user):
 
     assert client.get("/expenses", headers=ana).json() == []
     assert len(client.get("/expenses", headers=bruno).json()) == 1
+
+def test_amount_with_three_decimals_is_rejected(client, make_user):
+    ana = make_user("ana@example.com")
+    response = client.post("/expenses", json={**EXPENSE, "amount": 1.234}, headers=ana)
+    assert response.status_code == 422
+
+
+def test_amount_is_returned_as_a_json_number(client, make_user):
+    # amount es Decimal por dentro, pero la API debe seguir devolviendo un número, no "12.50"
+    ana = make_user("ana@example.com")
+    created = client.post("/expenses", json=EXPENSE, headers=ana).json()
+    listed = client.get("/expenses", headers=ana).json()[0]
+    assert isinstance(created["amount"], float)
+    assert isinstance(listed["amount"], float)
