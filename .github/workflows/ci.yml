@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (pytest + PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      # Un PostgreSQL de usar y tirar solo para los tests (las credenciales no son secretas)
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: expenses
+          POSTGRES_PASSWORD: expenses
+          POSTGRES_DB: expenses_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U expenses -d expenses_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: pytest (incluye test_postgres.py)
+        run: pytest -v
+        env:
+          TEST_POSTGRES_URL: postgresql+psycopg://expenses:expenses@127.0.0.1:5432/expenses_test
+
+  frontend:
+    name: Frontend (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  docker:
+    name: Docker compose (arranca todo)
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: solo-para-ci
+      SECRET_KEY: clave-solo-para-ci-no-usar-nunca-en-produccion-0123456789
+    steps:
+      - uses: actions/checkout@v5
+      - name: Construir y arrancar
+        run: docker compose up -d --build --wait
+      - name: Comprobar backend y frontend
+        run: |
+          curl --fail --silent http://127.0.0.1:8000/health
+          curl --fail --silent http://127.0.0.1:8080/ | grep -q '<div id="root">'
+      - name: Logs si algo falla
+        if: failure()
+        run: docker compose logs
+      - name: Parar
+        if: always()
+        run: docker compose down -v
